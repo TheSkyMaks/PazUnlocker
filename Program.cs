@@ -31,4 +31,13 @@ static void EnsureFileExists(string filePath)
 EnsureFileExists("appconfig.json");
 Console.OutputEncoding = Encoding.UTF8;
 var console = new PazConsoleApp();
-await console.Start();
+try
+{
+    await console.Start();
+}
+catch (Exception e)
+{
+    Console.WriteLine(e.Message);
+    Console.Write("Press Enter for close app");
+    Console.ReadLine();
+}
