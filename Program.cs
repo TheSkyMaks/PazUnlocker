@@ -8,17 +8,16 @@ static void EnsureFileExists(string filePath)
     {
         object defaultContent = new
         {
-            Name = "test",
-            Group = "1",
-            Attempts = 5,
-            TestUrl = "https://quiz.itmpaz2024.online/h",
-            AnswersUrl = "https://docs.google.com/spreadsheets/d/1jLs0nQccE8CZdkv64pFkrEnfQobnewu2-JLtTeR6Wxg/export?format=xlsx",
+            Name = "[*Enter Name]",
+            Group = "[*Enter Group]",
+            Attempts = 1,
+            TestUrl = "[*Enter test URL]",
+            AnswersUrl = "[*Enter answers sheet URL]",
             ConsoleQuestionsLog = true,
             WaitBeforeSubmit = false,
             WaitBeforeStartNewAttempt = true,
             ExamMode = false,
             StudyMode = true
-
         };
         
         File.WriteAllText(filePath, JsonSerializer.Serialize(defaultContent));
