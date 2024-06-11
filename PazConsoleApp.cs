@@ -1,18 +1,24 @@
-﻿namespace PazUnlocker.Console
+﻿using System.Net;
+using System.Text;
+
+namespace PazUnlocker.Console
 {
     internal class PazConsoleApp
     {
+        private int _take;
         private string _name;
         private string _group;
-        private string _apiKey;
         private int _attempts = 10;
         private bool _consoleQuestionsLog = true;
         private bool _waitBeforeSubmit = false;
         private bool _waitBeforeStartNewAttempt;
         private bool _examMode;
+        private bool _studyMode;
         private OpenXMLParser openXMLParser = new OpenXMLParser();
         private string _testLink;
+        private string _answersUrl;
         private Dictionary<string, string> _questionComments = new Dictionary<string, string>();
+        private Dictionary<string, string> _normalizedQuestions = new Dictionary<string, string>();
 
 
         public PazConsoleApp()
@@ -21,95 +27,108 @@
             dynamic jsonObj = Newtonsoft.Json.JsonConvert.DeserializeObject(json);
             _name = jsonObj["Name"];
             _group = jsonObj["Group"];
-            _group = jsonObj["Group"];
             _attempts = jsonObj["Attempts"];
-            _apiKey = jsonObj["ApiKey"];
             _consoleQuestionsLog = jsonObj["ConsoleQuestionsLog"];
             _waitBeforeSubmit = jsonObj["WaitBeforeSubmit"];
             _testLink = jsonObj["TestUrl"];
+            _answersUrl = jsonObj["AnswersUrl"];
             _waitBeforeStartNewAttempt = jsonObj["WaitBeforeStartNewAttempt"];
             _examMode = jsonObj["ExamMode"];
+            _studyMode = jsonObj["StudyMode"];
+            int? take = jsonObj["Take"];
+            _take = take.HasValue ? take.Value : 0;
         }
 
-        private List<int> GetNumbersOfCorrectAnswers(string answerStr)
+        private List<string> GetNumbersOfCorrectAnswers(string answerStr)
         {
-            var answerNumberList = new List<int>();
+            var answerNumberList = new List<string>();
             if (string.IsNullOrWhiteSpace(answerStr))
             {
                 return answerNumberList;
             }
 
-            var answers = answerStr.Split("\n").ToList();
-            foreach (var answer in answers)
+            var answers = new List<string>();
+            if (answerStr.Contains(';'))
             {
-                var answerResponse = answer.Split("-").First().Split(")").First();
-                if (int.TryParse(answerResponse, out int answerIndex))
+                answers = answerStr.Split(";").ToList();
+            }
+            else if (answerStr.Contains('\n'))
+            {
+                answers = answerStr.Split("\n").ToList();
+            }
+            else
+            {
+                answers.Add(answerStr);
+            }
+
+            answers = answers.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+            
+            return answers;
+        }
+
+
+        public string RemoveSymbols(string input)
+        {
+            char[] symbolsToRemove = new[] { '.','?','/',';','\n',' ',':','-','(',')' };
+            StringBuilder result = new StringBuilder();
+
+            foreach (char c in input)
+            {
+                bool toRemove = false;
+                foreach (char symbol in symbolsToRemove)
                 {
-                    answerNumberList.Add(answerIndex);
+                    if (c == symbol)
+                    {
+                        toRemove = true;
+                        break;
+                    }
+                }
+                if (!toRemove)
+                {
+                    result.Append(c);
                 }
             }
 
-            return answerNumberList;
+            return result.ToString().ToUpper();
         }
 
-        private Dictionary<int, string> GetNumbersAnswerDictionary(string answerStr)
+        async Task DownloadGoogleSheetAsXlsx(string url, string destinationPath)
         {
-            var numberAnswers = new Dictionary<int, string>();
-            if (string.IsNullOrWhiteSpace(answerStr))
+            using (HttpClient client = new HttpClient())
             {
-                return numberAnswers;
-            }
+                HttpResponseMessage response = await client.GetAsync(url);
+                response.EnsureSuccessStatusCode();
 
-            var baseAnswers = answerStr.Split("\n").ToList();
-
-            foreach (var answer in baseAnswers)
-            {
-                var tempAnswer = answer.Trim();
-                var tempAnswers = tempAnswer.Split("-").First().Split(")");
-                var tempAnswersFirst = tempAnswers[0];
-                if (int.TryParse(tempAnswersFirst, out int answerIndex))
+                if (File.Exists(destinationPath))
                 {
-                    var lengthOfFirst = tempAnswersFirst.Length + 1;
-                    var ans = tempAnswer.Substring(lengthOfFirst).ToString();
-                    var answerText = $"){ans.Trim().Split(";").First()}";
-                    numberAnswers.Add(answerIndex, answerText);
+                    File.Delete(destinationPath);
+                }
+
+                await using (FileStream fs = new FileStream(destinationPath, FileMode.Create))
+                {
+                    await response.Content.CopyToAsync(fs);
                 }
             }
-
-            return numberAnswers;
         }
 
-        private List<string> GetCorrectAnswers(List<int> answerNumberList, Dictionary<int, string> numberAnswers)
+        private async Task<Dictionary<string, List<string>>> InitData()
         {
-            var correctAnswers = new List<string>();
+            
+            string destinationPath = @"PAZ.xlsx";
+        
+            await DownloadGoogleSheetAsXlsx(_answersUrl, destinationPath);
 
-            foreach (var answerNumber in answerNumberList)
-            {
-                if (numberAnswers.ContainsKey(answerNumber))
-                {
-                    correctAnswers.Add(numberAnswers[answerNumber]);
-                }
-            }
-
-            return correctAnswers;
-        }
-
-        private Dictionary<string, List<string>> InitData()
-        {
             var data = openXMLParser.ParseDocument("PAZ.xlsx");
+       
             var questionAnswers = new Dictionary<string, List<string>>();
             foreach (var rowData in data)
             {
                 var list = rowData.Value;
-                var answerStr = list.Count > 2 ? list[2] : string.Empty;
+                var answerStr = list.Count > 1 ? list[1] : string.Empty;
                 var answerNumberList = GetNumbersOfCorrectAnswers(answerStr);
-
-                var correctAnswerStr = list.Count > 1 ? list[1] : string.Empty;
-                var numberAnswers = GetNumbersAnswerDictionary(correctAnswerStr);
-
-                var correctAnswers = GetCorrectAnswers(answerNumberList, numberAnswers);
-                var questionText = list[0].Replace("\r\n", "\n").Replace(" ", "");
-                questionAnswers.Add(questionText, correctAnswers);
+                var questionText = RemoveSymbols(list[0]);
+                questionAnswers.Add(questionText, answerNumberList);
+                _normalizedQuestions.Add(questionText, list[0]);
 
                 var comment = list.Count > 3 ? list[3] : string.Empty;
 
@@ -118,19 +137,27 @@
             return questionAnswers;
         }
 
-        public void Start()
+        public async Task Start()
         {
             try
             {
-                var questionNumberAnswers = InitData();
+                var questionNumberAnswers = await InitData();
 
-                var pazUnlocker = new PazUnlocker(_apiKey, _consoleQuestionsLog, _waitBeforeSubmit);
+                var pazUnlocker = new PazUnlocker(_consoleQuestionsLog, _waitBeforeSubmit, RemoveSymbols);
                 pazUnlocker._testLink = _testLink;
                 pazUnlocker._questionAnswers = questionNumberAnswers;
                 pazUnlocker._questionComments = _questionComments;
+                pazUnlocker._normalizedQuestions = _normalizedQuestions;
                 pazUnlocker._waitBeforeStartNewAttempt = _waitBeforeStartNewAttempt;
 
-                if (_examMode)
+                System.Console.Clear();
+                if (_studyMode)
+                {
+                    System.Console.WriteLine("START STUDY MODE");
+                    System.Console.WriteLine($"Loaded {questionNumberAnswers.Count} rows");
+                    pazUnlocker.Study(_name, _group);
+                }
+                else if (_examMode)
                 {
                     pazUnlocker.OpenPage();
                     pazUnlocker.ExamMode();

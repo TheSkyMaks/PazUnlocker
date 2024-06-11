@@ -1,5 +1,4 @@
 ﻿using System.Text;
-using PazUnlocker.ChatGpt;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -19,7 +18,6 @@ namespace PazUnlocker
         private Dictionary<string, string> _questionGptResponse = new Dictionary<string, string>();
         private Dictionary<string, string> _questionNumberAnswers = new Dictionary<string, string>();
 
-        private readonly ChatGptApiClient _chatGpt;
 
         private const string _templateForQuestion = "Візьми на себе роль спеціаліста з 30 років досвіду у низькорівневому програмуванні вбудованих систем на базі мікроконтролерів та мікропроцесорів. Перерахуй усі можливі правильні відповіді, відповідь повинна бути у короткому вигляді: номер відповіді (якщо кілька, то через кому) - відповідь - опис відповіді. Дай відповідь на запитання: {0}";
 
@@ -31,6 +29,8 @@ namespace PazUnlocker
 
         private int _maxMark;
 
+        private List<(string, string, int)> _studies = new List<(string, string, int)>();
+        private (string, string) SELECTED;
         #endregion
 
         #region Fields: Public
@@ -38,142 +38,59 @@ namespace PazUnlocker
         public Dictionary<string, List<string>> _questionAnswers = new Dictionary<string, List<string>>();
 
         public Dictionary<string, string> _questionComments = new Dictionary<string, string>();
+        public Dictionary<string, string> _normalizedQuestions = new Dictionary<string, string>();
+        public List<string> _unknownQuestions = new List<string>();
 
         public string _testLink;
 
         public bool _waitBeforeStartNewAttempt;
-
+        private Func<string, string> _removeSymbol; 
         #endregion
 
         #region Constructors: Public
-
-        public PazUnlocker(string chatGptApiKey)
+        
+        public PazUnlocker(bool consoleQuestionsLog, bool waitBeforeSubmit, Func<string, string> removeSymbol)
         {
-            _chatGpt = new ChatGptApiClient(chatGptApiKey);
-            _consoleQuestionsLog = false;
-        }
-
-        public PazUnlocker(string chatGptApiKey, bool consoleQuestionsLog, bool waitBeforeSubmit)
-        {
-            _chatGpt = new ChatGptApiClient(chatGptApiKey);
             _consoleQuestionsLog = consoleQuestionsLog;
+            _removeSymbol = removeSymbol;
             _waitBeforeSubmit = waitBeforeSubmit;
         }
 
         #endregion
 
         #region Methods: Private
-
         private string TryGetCode(string inputString)
         {
             try
             {
                 var code = _driver.FindElement(By.CssSelector("code"));
                 var codeText = code.Text;
-                return inputString + "; code: " + codeText;
+                return inputString + ";" + codeText;
             }
             catch (Exception)
             {
                 return inputString;
             }
         }
-
         private string TryGetPicture(string inputString)
         {
             try
             {
                 var img = _driver.FindElement(By.ClassName("img-fluid"));
                 var src = img.GetAttribute("src");
-                src = src.Replace(_testLink, "http://lysenko.in:5000/");
-                return inputString + "; link: " + src;
+                return inputString + ";" + src;
             }
             catch (Exception)
             {
                 return inputString;
             }
         }
-
-        private string GetAnswerFromChatGpt(string content, int tryNumber = 0)
-        {
-            var response = _chatGpt.GetAnswerFromChatGpt(content);
-            if (string.IsNullOrEmpty(response))
-            {
-                response = "Empty response";
-                tryNumber++;
-
-                if (tryNumber < 3)
-                {
-                    return GetAnswerFromChatGpt(content, tryNumber);
-                }
-            }
-
-            return response;
-        }
-
-        private string GetAnswer(string questionWithAnswers, string questionText)
-        {
-            string response;
-
-            if (!_questionGptResponse.ContainsKey(questionText))
-            {
-                var content = string.Format(_templateForQuestion, questionWithAnswers);
-                response = GetAnswerFromChatGpt(content);
-                if (response.StartsWith("#Error#"))
-                {
-                    var redColor = ConsoleColor.Red;
-                    System.Console.ForegroundColor = redColor;
-                    System.Console.WriteLine("-----response error-----", redColor);
-                    System.Console.WriteLine(response, redColor);
-                    System.Console.WriteLine("------------------", redColor);
-                    System.Console.ForegroundColor = ConsoleColor.Gray;
-                    return string.Empty;
-                }
-                _questionGptResponse.Add(questionText, response);
-            }
-            else
-            {
-                response = _questionGptResponse[questionText];
-            }
-
-            if (_consoleQuestionsLog || _questionComments.ContainsKey(questionText) && !string.IsNullOrWhiteSpace(_questionComments[questionText]))
-            {
-                System.Console.WriteLine("-----response-----");
-                System.Console.WriteLine(response);
-                System.Console.WriteLine("------------------");
-            }
-
-            return response;
-        }
-
-        private void AddOrUpdateQuestionAnswer(string questionText, List<string> correctAnswers)
-        {
-            if (!_questionAnswers.ContainsKey(questionText))
-            {
-                _questionAnswers.Add(questionText, correctAnswers);
-            }
-            else
-            {
-                _questionAnswers[questionText] = correctAnswers;
-            }
-        }
-
-        private void AddOrUpdateQuestionComment(string questionText, string comment)
-        {
-            if (!_questionComments.ContainsKey(questionText))
-            {
-                _questionComments.Add(questionText, comment);
-            }
-            else
-            {
-                _questionComments[questionText] = comment;
-            }
-        }
-
         private bool ClickByAnswer(System.Collections.ObjectModel.ReadOnlyCollection<IWebElement> answers, string questionText)
         {
             var isClicked = false;
             if (!_questionAnswers.ContainsKey(questionText))
             {
+                _unknownQuestions.Add(questionText);
                 return isClicked;
             }
 
@@ -184,8 +101,8 @@ namespace PazUnlocker
                 {
                     foreach (var answerElement in answers)
                     {
-                        var answerText = $"){answerElement.Text.Split(";").First()}";
-                        if (correctAnswer == answerText)
+                        var answerText = $"{answerElement.Text.Split(";").First()}";
+                        if (_removeSymbol(correctAnswer) == _removeSymbol(answerText))
                         {
                             answerElement.Click();
                             isClicked = true;
@@ -197,46 +114,15 @@ namespace PazUnlocker
 
             return isClicked;
         }
-
-        private bool ClickByResponse(System.Collections.ObjectModel.ReadOnlyCollection<IWebElement> answers, string response, string questionText)
-        {
-            var isClicked = false;
-            var correctAnswers = new List<string>();
-            var answersList = response.Split("\n").ToList();
-            foreach (var answer in answersList)
-            {
-                var answersResponses = answer.Split("-").First().Split(")").First().Split(", ");
-                foreach (var answersResponse in answersResponses)
-                {
-                    if (int.TryParse(answersResponse, out int answerIndex))
-                    {
-                        answerIndex--;
-                        var answerElement = answers.ElementAtOrDefault(answerIndex);
-                        if (answerElement != null)
-                        {
-                            var answerText = $"){answerElement.Text.Split(";").First()}";
-                            correctAnswers.Add(answerText);
-                            answerElement.Click();
-                            isClicked = true;
-                        }
-                    }
-                }
-            }
-
-            AddOrUpdateQuestionAnswer(questionText, correctAnswers);
-            AddOrUpdateQuestionComment(questionText, response);
-
-            return isClicked;
-        }
-
+        
         private bool FindAnswer()
         {
-            Thread.Sleep(100);
+            Thread.Sleep(500);
             var answers = _driver.FindElements(By.CssSelector("label.form-check-label"));
             var question = _driver.FindElement(By.CssSelector("h6"));
             var questionText = TryGetCode(question.Text);
             questionText = TryGetPicture(questionText);
-
+            questionText = _removeSymbol(questionText);
             var index = 0;
             StringBuilder sbAnswers = new StringBuilder();
             foreach (var answerElement in answers)
@@ -281,15 +167,7 @@ namespace PazUnlocker
             {
                 return isClicked;
             }
-
-            string response = GetAnswer(questionWithAnswers, questionText);
-            isClicked = ClickByResponse(answers, response, questionText);
-
-            if (isClicked)
-            {
-                return isClicked;
-            }
-
+            
             if (!isClicked)
             {
                 var firstAnswer = answers.FirstOrDefault();
@@ -297,6 +175,79 @@ namespace PazUnlocker
                 {
                     firstAnswer.Click();
                 }
+            }
+
+            return isClicked;
+        }
+
+        private bool ClickByAllAnswer(System.Collections.ObjectModel.ReadOnlyCollection<IWebElement> answers)
+        {
+            foreach (var answer in answers)
+            {
+                answer.Click();
+            }
+
+            return true;
+        }
+        private bool ClickByAllAnswer(System.Collections.ObjectModel.ReadOnlyCollection<IWebElement> answers, string questionText)
+        {
+            if (!_questionAnswers.ContainsKey(questionText))
+            {
+                return ClickByAllAnswer(answers);
+            }
+
+            var correctAnswers = _questionAnswers[questionText];
+            if (correctAnswers.Count == answers.Count)
+            {
+                answers.FirstOrDefault().Click();
+                return true;
+            }
+            ClickByAllAnswer(answers);
+            return true;
+        }
+
+        private bool FindTrue()
+        {
+            Thread.Sleep(500);
+            var answers = _driver.FindElements(By.CssSelector("label.form-check-label"));
+            var question = _driver.FindElement(By.CssSelector("h6"));
+            var questionText = TryGetCode(question.Text);
+            questionText = TryGetPicture(questionText);
+            questionText = _removeSymbol(questionText);
+            var index = 0;
+            StringBuilder sbAnswers = new StringBuilder();
+            foreach (var answerElement in answers)
+            {
+                index++;
+                sbAnswers.AppendLine($"{index}) {answerElement.Text};");
+            }
+            var answersText = sbAnswers.ToString();
+            
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine(questionText);
+            sb.AppendLine(answersText);
+            var questionWithAnswers = sb.ToString();
+
+            questionText = questionText.Replace("\r\n", "\n").Replace(" ", "");
+            var isClicked = false;
+            var isInDatabase = _questionAnswers.ContainsKey(questionText);
+
+            if (isInDatabase || (!string.IsNullOrWhiteSpace(SELECTED.Item1) && !string.IsNullOrWhiteSpace(SELECTED.Item2)))
+            {
+                isClicked = ClickByAllAnswer(answers, questionText);
+            }
+            
+            if (isClicked)
+            {
+                return isClicked;
+            }
+            
+            if (!isClicked)
+            {
+                var s = question.Text;
+                System.Console.WriteLine($"Q: {s} ({questionText})");
+                var a = System.Console.ReadLine();
+                SELECTED = (questionText,a);
             }
 
             return isClicked;
@@ -359,6 +310,7 @@ namespace PazUnlocker
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("---------------------------");
             sb.AppendLine($"End of Attempt: {DateTime.Now}");
+            sb.AppendLine($"Unknown Questions: {_unknownQuestions.Count}");
             sb.AppendLine($"Number Of Attempt: {_numberOfAttempt}");
             sb.AppendLine($"Current max mark: {_maxMark}");
             sb.AppendLine($"Attempt: {attempt}");
@@ -418,7 +370,6 @@ namespace PazUnlocker
         {
             _driver.Navigate().GoToUrl(_testLink);
         }
-
         public void ExamMode()
         {
             try
@@ -445,7 +396,6 @@ namespace PazUnlocker
                 ExamMode();
             }
         }
-
         public void UnlockExam()
         {
             var answers = _driver.FindElements(By.CssSelector("label.form-check-label"));
@@ -490,17 +440,105 @@ namespace PazUnlocker
                 System.Console.WriteLine(_questionComments[questionText]);
                 System.Console.WriteLine("------------------");
             }
-
-            var response = GetAnswer(questionWithAnswers, questionText);
-            if (!_consoleQuestionsLog && (!_questionComments.ContainsKey(questionText) || string.IsNullOrWhiteSpace(_questionComments[questionText])))
-            {
-                System.Console.WriteLine("-----response-----");
-                System.Console.WriteLine(response);
-                System.Console.WriteLine("------------------");
-            }
-
+            
         }
 
+        public void Study(string name, string group)
+        {
+            string attempt;
+            int mark;
+            do
+            {
+                
+                
+                SELECTED = (null,null);
+                _unknownQuestions = new List<string>();
+                _numberOfAttempt++;
+                _driver.Navigate().GoToUrl(_testLink);
+
+                IWebElement unameInputElement = _driver.FindElement(By.Id("username"));
+                unameInputElement.SendKeys(name);
+
+                IWebElement ugroupInputElement = _driver.FindElement(By.Id("usergroup"));
+                ugroupInputElement.SendKeys(group);
+
+                IWebElement submitButton = _driver.FindElement(By.Id("submit"));
+
+                try
+                {
+                    IWebElement? captha = _driver.FindElement(By.ClassName("g-recaptcha"));
+                    System.Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine($"Confirm the captcha and press ENTER: ");
+                    System.Console.ForegroundColor = ConsoleColor.Gray;
+
+                }
+                catch (Exception e)
+                {
+                    System.Console.ForegroundColor = ConsoleColor.Green;
+                    System.Console.WriteLine("INIT SUCCESS");
+                    System.Console.WriteLine("PRESS ENTER FOR START TEST: ");
+                    System.Console.ForegroundColor = ConsoleColor.Gray;
+                }
+                
+                System.Console.ReadLine();
+                submitButton.Click();
+                int i = 1;
+                while (i <= 20)
+                {
+                    Thread.Sleep(3000);
+                    try
+                    {
+                        IWebElement? captha = _driver.FindElement(By.ClassName("g-recaptcha"));
+                        System.Console.ForegroundColor = ConsoleColor.Red;
+                        System.Console.WriteLine($"Confirm the captcha and press ENTER: ");
+                        System.Console.ForegroundColor = ConsoleColor.Gray;
+                        System.Console.ReadLine();
+                        System.Console.Clear();
+                    }
+                    catch (Exception e)
+                    {
+                    }
+
+                    FindTrue();
+
+                    IWebElement submitAnswerButton = _driver.FindElement(By.CssSelector("input#submit.btn.btn-outline-info"));
+                    submitAnswerButton.Click();
+
+                    var indexText = GetTextFromElement("h1").Replace("Питання", "").Split("з").FirstOrDefault();
+                    if (int.TryParse(indexText, out int indexValue))
+                    {
+                        i = indexValue;
+                    }
+                    else
+                    {
+                        i++;
+                    }
+                }
+
+                Thread.Sleep(60);
+
+                attempt = GetTextFromElement("div.media-body");
+
+                _listResults.Add(attempt);
+
+                var resultArr = attempt.Split("\r\n");
+
+                mark = int.Parse(resultArr.First().Split('\n')[4].Replace("Вірних відповідей ", ""));
+
+                if (mark >= 1)
+                {
+                }
+                else
+                {
+                    
+                }
+                System.Console.WriteLine($"Q: {SELECTED.Item1}");
+                System.Console.WriteLine($"A: {SELECTED.Item2}");
+                System.Console.WriteLine($"M: {mark}");
+                System.Console.WriteLine($"Waiting...");
+                System.Console.ReadLine();
+            } while (mark < 19);
+        }
         public void PazUnlock(string name, string group, int maxNumberOfAttempts = 10)
         {
             _numberOfAttempt = 0;
@@ -526,25 +564,59 @@ namespace PazUnlocker
 
             do
             {
+                _unknownQuestions = new List<string>();
                 _numberOfAttempt++;
                 _driver.Navigate().GoToUrl(_testLink);
 
-                IWebElement unameInputElement = _driver.FindElement(By.Id("uname"));
+                IWebElement unameInputElement = _driver.FindElement(By.Id("username"));
                 unameInputElement.SendKeys(name);
 
-                IWebElement ugroupInputElement = _driver.FindElement(By.Id("ugroup"));
+                IWebElement ugroupInputElement = _driver.FindElement(By.Id("usergroup"));
                 ugroupInputElement.SendKeys(group);
 
-                IWebElement submitButton = _driver.FindElement(By.CssSelector("button.btn.btn-outline-info"));
+                IWebElement submitButton = _driver.FindElement(By.Id("submit"));
+
+                try
+                {
+                    IWebElement? captha = _driver.FindElement(By.ClassName("g-recaptcha"));
+                    System.Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine($"Confirm the captcha and press ENTER: ");
+                    System.Console.ForegroundColor = ConsoleColor.Gray;
+
+                }
+                catch (Exception e)
+                {
+                    System.Console.ForegroundColor = ConsoleColor.Green;
+                    System.Console.WriteLine("INIT SUCCESS");
+                    System.Console.WriteLine("PRESS ENTER FOR START TEST: ");
+                    System.Console.ForegroundColor = ConsoleColor.Gray;
+                }
+                
+                System.Console.ReadLine();
                 submitButton.Click();
                 int i = 1;
                 while (i <= 20)
                 {
+                    Thread.Sleep(3000);
+                    System.Console.Clear();
+                    try
+                    {
+                        IWebElement? captha = _driver.FindElement(By.ClassName("g-recaptcha"));
+                        System.Console.ForegroundColor = ConsoleColor.Red;
+                        System.Console.WriteLine($"Confirm the captcha and press ENTER: ");
+                        System.Console.ForegroundColor = ConsoleColor.Gray;
+                        System.Console.ReadLine();
+                        System.Console.Clear();
+                    }
+                    catch (Exception e)
+                    {
+                    }
+
                     FindAnswer();
 
                     if (_waitBeforeSubmit)
                     {
-                        System.Console.WriteLine("Press Enter to submit...");
+                        System.Console.WriteLine($"Q {i} | Press Enter to submit...");
                         System.Console.ReadLine();
                     }
                     IWebElement submitAnswerButton = _driver.FindElement(By.CssSelector("input#submit.btn.btn-outline-info"));
@@ -569,7 +641,7 @@ namespace PazUnlocker
 
                 var resultArr = attempt.Split("\r\n");
 
-                mark = int.Parse(resultArr[4].Replace("Вірних відповідей ", ""));
+                mark = int.Parse(resultArr.First().Split('\n')[4].Replace("Вірних відповідей ", ""));
 
                 if (mark > _maxMark)
                 {

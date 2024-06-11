@@ -8,7 +8,8 @@ namespace PazUnlocker
         public Dictionary<int, List<string>> ParseDocument(string fileName)
         {
             var rowsData = new Dictionary<int, List<string>>();
-            using (var file = File.Open(fileName, FileMode.Open))
+            var file = File.Open(fileName, FileMode.Open);
+            using (file )
             {
                 using (SpreadsheetDocument document = SpreadsheetDocument.Open(file, false))
                 {
