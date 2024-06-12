@@ -19,7 +19,7 @@ namespace PazUnlocker.Console
         private string _answersUrl;
         private Dictionary<string, string> _questionComments = new Dictionary<string, string>();
         private Dictionary<string, string> _normalizedQuestions = new Dictionary<string, string>();
-
+        private CaptchaSolver _captchaSolver;
 
         public PazConsoleApp()
         {
@@ -37,6 +37,7 @@ namespace PazUnlocker.Console
             _studyMode = jsonObj["StudyMode"];
             int? take = jsonObj["Take"];
             _take = take.HasValue ? take.Value : 0;
+            _captchaSolver = new CaptchaSolver();
         }
 
         private List<string> GetNumbersOfCorrectAnswers(string answerStr)

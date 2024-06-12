@@ -2,6 +2,9 @@
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using DocumentFormat.OpenXml.Wordprocessing;
+using OpenQA.Selenium.Support.UI;
+using PazUnlocker.Console;
+using SeleniumExtras.WaitHelpers;
 
 namespace PazUnlocker
 {
@@ -28,6 +31,7 @@ namespace PazUnlocker
         private int _numberOfAttempt;
 
         private int _maxMark;
+        private FileManager _file;
 
         private List<(string, string, int)> _studies = new List<(string, string, int)>();
         private (string, string) SELECTED;
@@ -213,6 +217,12 @@ namespace PazUnlocker
             var question = _driver.FindElement(By.CssSelector("h6"));
             var questionText = TryGetCode(question.Text);
             questionText = TryGetPicture(questionText);
+            _file.AppendToFile($"Q: {questionText}");
+            foreach (var answer in answers)
+            {
+                _file.AppendToFile($"A: {answer.Text}");
+            }
+            _file.AppendToFile("----------------------------");
             questionText = _removeSymbol(questionText);
             var index = 0;
             StringBuilder sbAnswers = new StringBuilder();
@@ -445,11 +455,12 @@ namespace PazUnlocker
 
         public void Study(string name, string group)
         {
+            FileManager.CreateFolder("study");
+            _file = new FileManager($"study/{DateTime.Now}.txt");
             string attempt;
             int mark;
             do
             {
-                
                 
                 SELECTED = (null,null);
                 _unknownQuestions = new List<string>();
@@ -523,18 +534,29 @@ namespace PazUnlocker
 
                 var resultArr = attempt.Split("\r\n");
 
-                mark = int.Parse(resultArr.First().Split('\n')[4].Replace("Вірних відповідей ", ""));
-
-                if (mark >= 1)
-                {
-                }
-                else
-                {
-                    
-                }
                 System.Console.WriteLine($"Q: {SELECTED.Item1}");
+                _file.AppendToFile("========================");
+                _file.AppendToFile($"Q: {SELECTED.Item1}");
+                _file.AppendToFile($"A: {SELECTED.Item2}");
                 System.Console.WriteLine($"A: {SELECTED.Item2}");
-                System.Console.WriteLine($"M: {mark}");
+                mark = 0;
+                try
+                {
+                    mark = int.Parse(resultArr.First().Split('\n')[4].Replace("Вірних відповідей ", ""));
+                    if (mark >= 1)
+                    {
+                    }
+                    else
+                    {
+                    
+                    }
+                    System.Console.WriteLine($"M: {mark}");
+
+                }
+                catch (Exception e)
+                {
+                    System.Console.WriteLine(e.Message);
+                }
                 System.Console.WriteLine($"Waiting...");
                 System.Console.ReadLine();
             } while (mark < 19);
@@ -594,6 +616,7 @@ namespace PazUnlocker
                 
                 System.Console.ReadLine();
                 submitButton.Click();
+                
                 int i = 1;
                 while (i <= 20)
                 {
