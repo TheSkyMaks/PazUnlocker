@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text;
 
 namespace PazUnlocker.Console
@@ -176,4 +176,3 @@ namespace PazUnlocker.Console
         }
     }
 }
-

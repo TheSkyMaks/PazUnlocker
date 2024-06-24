@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using DocumentFormat.OpenXml.Wordprocessing;
