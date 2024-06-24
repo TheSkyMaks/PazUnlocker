@@ -2,7 +2,7 @@
 
 # Посилання для завантаження:
  ### [Windows](https://drive.google.com/file/d/1XhyW4fbAp7HjmFpUCF62iD9cEwGFtUR9/view?usp=sharing)
- ### [MacOS ARM](https://drive.google.com/file/d/14n-dbvZnA4nScjjILzSwxxotBmrXa3V4/view?usp=sharing)
+ ### [MacOS ARM](https://drive.google.com/file/d/150qywDaa8W_lqxUmSxwH_yExLG9-2k_E/view?usp=sharing)
 # **Інструкція**
 
 Це програма для виконання тестів з дисципліни "Програмування апаратних засобів" (у нас це мало назву "Низькорівневе програмування вбудованих систем на базі мікроконтролерів та мікропроцесорів"). Ось сайт цього предмету: <https://sites.google.com/site/itmpaz2011>
