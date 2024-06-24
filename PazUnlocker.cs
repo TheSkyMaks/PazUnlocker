@@ -325,6 +325,8 @@ namespace PazUnlocker
             sb.AppendLine($"Current max mark: {_maxMark}");
             sb.AppendLine($"Attempt: {attempt}");
             sb.AppendLine("---------------------------");
+            _file = new FileManager("testTries.txt");
+            _file.AppendToFile(sb.ToString());
             return sb.ToString();
         }
 
@@ -455,8 +457,7 @@ namespace PazUnlocker
 
         public void Study(string name, string group)
         {
-            FileManager.CreateFolder("study");
-            _file = new FileManager($"study/{DateTime.Now}.txt");
+            _file = new FileManager($"{DateTime.Now.ToString("yyyy-dd-M--HH-mm-ss")}.txt", "study");
             string attempt;
             int mark;
             do
@@ -532,7 +533,7 @@ namespace PazUnlocker
 
                 _listResults.Add(attempt);
 
-                var resultArr = attempt.Split("\r\n");
+                var resultArr = attempt.Split(Environment.NewLine);
 
                 System.Console.WriteLine($"Q: {SELECTED.Item1}");
                 _file.AppendToFile("========================");
@@ -542,7 +543,7 @@ namespace PazUnlocker
                 mark = 0;
                 try
                 {
-                    mark = int.Parse(resultArr.First().Split('\n')[4].Replace("Вірних відповідей ", ""));
+                    mark = int.Parse(resultArr.First().Split(Environment.NewLine)[4].Replace("Вірних відповідей ", ""));
                     if (mark >= 1)
                     {
                     }
@@ -662,9 +663,9 @@ namespace PazUnlocker
 
                 _listResults.Add(attempt);
 
-                var resultArr = attempt.Split("\r\n");
+                var resultArr = attempt.Split(Environment.NewLine);
 
-                mark = int.Parse(resultArr.First().Split('\n')[4].Replace("Вірних відповідей ", ""));
+                mark = int.Parse(resultArr.First().Split(Environment.NewLine)[4].Replace("Вірних відповідей ", ""));
 
                 if (mark > _maxMark)
                 {

@@ -7,9 +7,21 @@ using System.Text;
 public class FileManager
 {
     private string _path;
-    public FileManager(string path)
+    public FileManager(string fileName, string dir = null)
     {
-        _path = path;
+        string basePath = AppDomain.CurrentDomain.BaseDirectory;
+        string fullPath;
+        if (string.IsNullOrWhiteSpace(dir))
+        {
+            fullPath=Path.Combine(basePath, fileName);
+        }
+        else
+        {
+            fullPath=Path.Combine(basePath, dir, fileName);
+
+        }
+        
+        _path = fullPath;
         CreateFile();
     }
     public void CreateFile()
